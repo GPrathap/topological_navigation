@@ -275,7 +275,8 @@ class TopoMap2Vis(rclpy.node.Node):
                         self.get_logger().info("The goal cancel error code {} ".format(self.get_goal_cancle_error_msg(cancel_future.result().return_code)))
                         return True 
                 except Exception as e:
-                    pass 
+                    self.get_logger().error("Edge Action Manager: error while canceling the previous action")
+                    return False 
 
     def get_goal_cancle_error_msg(self, status_code):
         try:

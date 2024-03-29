@@ -84,7 +84,7 @@ class EdgeActionManager(rclpy.node.Node):
         self.current_action = "none"
         self.dt = dict_tools()
         
-    def init(self, ACTIONS, route_search, update_params_control_server, inrow_step_size=3.0):
+    def init(self, ACTIONS, route_search, update_params_control_server, inrow_step_size=3.0, intermediate_dis=0.7):
         self.ACTIONS = ACTIONS
         self.route_search = route_search
         self.goal_handle = None 
@@ -93,9 +93,11 @@ class EdgeActionManager(rclpy.node.Node):
         self.latching_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
         self.bt_trees =  {}
         self.in_row_operation = False
+        self.allowed_row_operation = False
         self.in_row_inter_pose = []
         self.control_server_configs = []
         self.inrow_step_size = inrow_step_size
+        self.intermediate_dis = intermediate_dis
         self.nav2_client_callback_group = MutuallyExclusiveCallbackGroup()
 
         self.update_params_control_server = update_params_control_server
@@ -107,6 +109,7 @@ class EdgeActionManager(rclpy.node.Node):
         self.target_pose_frame_id = None
         self.boundary_publisher = self.create_publisher(Path, '/boundary_checker', qos_profile=self.latching_qos)
         self.robot_current_status_pub = self.create_publisher(String, '/robot_operation_current_status', qos_profile=self.latching_qos)
+       
 
         self.robot_current_behavior_pub = None
         self.current_node = None 
@@ -297,6 +300,8 @@ class EdgeActionManager(rclpy.node.Node):
                 self.get_logger().info("Edge Action Manager: Waiting till terminating the current preemption")
                 self.action_status = 5
                 self.get_logger().info("Edge Action Manager: The goal cancel error code {} ".format(self.get_goal_cancle_error_msg(cancel_future.result().return_code)))
+                self.robot_current_status = self.ACTIONS.ROBOT_STATUS_NATURAL_STATE
+                self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
                 return True 
             except Exception as e:
                 # counter = counter +1
@@ -373,6 +378,8 @@ class EdgeActionManager(rclpy.node.Node):
                 nav_goal.poses.append(target_pose)
 
             if self.in_row_operation == True and action == self.ACTIONS.ROW_TRAVERSAL and (len(nodes) > 0):
+                # print("============================== self.allowed_row_operation=======================================================================", action)
+                self.allowed_row_operation = True
                 self.target_row_edge_id = edge_id.split("_")[0]
                 tag_id = self.target_row_edge_id.split("-")[1]
                 self.target_row_edge_id = self.target_row_edge_id[:-1] + self.ACTIONS.ROW_START_INDEX
@@ -403,7 +410,7 @@ class EdgeActionManager(rclpy.node.Node):
                 if(len(self.selected_edges) == 1):
                     self.selected_edges["side_wall"] = self.get_intermediate_poses_interpolated(self.selected_edges, cen, last_goal)
 
-
+                # self.get_logger().info("=============children i selected ===== {}".format(len(self.selected_edges)))   
                 if(len(self.selected_edges)>0):
                     path = Path()
                     header = Header()
@@ -413,10 +420,11 @@ class EdgeActionManager(rclpy.node.Node):
                     for key, val in self.selected_edges.items():
                         for pose in val:
                             path.poses.append(pose)
-                    self.boundary_publisher.publish(path)      
+                    self.boundary_publisher.publish(path)  
                 # self.get_logger().info("=============children i selected ===== {}".format(self.selected_edges))   
             else:
                 self.get_logger().info("Edge Action Manager:  Action {}  Bt_tree : {}".format(action, nav_goal.behavior_tree))
+                self.allowed_row_operation = False
                 goals.append(nav_goal)
                 actions_execute.append(action)
 
@@ -637,6 +645,10 @@ class EdgeActionManager(rclpy.node.Node):
             if target_action in self.control_server_configs:
                 control_server_config = self.control_server_configs[target_action]
                 self.update_params_control_server.set_params(control_server_config)
+            
+            self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
+            self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
+
             send_goal_future = self.client.send_goal_async(target_goal,  feedback_callback=self.feedback_callback)
             goal_accepted = self.send_goal_request(send_goal_future, target_action)
             if(goal_accepted == False):
@@ -644,8 +656,11 @@ class EdgeActionManager(rclpy.node.Node):
             processed_goal = self.processing_goal_request(target_action)
             if(processed_goal == False):
                 return processed_goal
+            
+        self.robot_current_status = self.ACTIONS.ROBOT_STATUS_NATURAL_STATE
+        self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
         
-        if self.in_row_operation:
+        if self.allowed_row_operation:
             self.get_logger().info("Edge Action Manager: Executing action : {} ".format(self.ACTIONS.ROW_OPERATION))
             while rclpy.ok():
                 try:
@@ -654,13 +669,14 @@ class EdgeActionManager(rclpy.node.Node):
                         # self.get_logger().info("Robot current pose: {}".format(self.current_robot_pose))
                         break 
                 except Exception as e:
+                    self.allowed_row_operation = False
                     self.get_logger().error("Edge Action Manager: Could not set the current pose of the robot {}".format(e, self.ACTIONS.ROW_OPERATION))
                     return False
                 
             if(len(self.in_row_inter_pose)==1):
                 self.in_row_inter_pose = [self.current_robot_pose, self.in_row_inter_pose[0]]
 
-            inrow_opt = RowOperations(self.in_row_inter_pose, self.inrow_step_size) 
+            inrow_opt = RowOperations(self.in_row_inter_pose, self.inrow_step_size, intermediate_dis=self.intermediate_dis) 
             robot_init_pose = self.current_robot_pose
             
             if inrow_opt.isPlanCalculated():
@@ -673,8 +689,6 @@ class EdgeActionManager(rclpy.node.Node):
                         if (len(node_id) == 2):
                             node_id = node_id[1]
                             if(node_id.startswith("c")):
-                                con_v1 = "b" not in node_id
-                                con_v2 = "a" not in node_id
                                 if ("a" not in node_id):
                                     self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_HARVESTING_STATE
 
@@ -684,12 +698,13 @@ class EdgeActionManager(rclpy.node.Node):
                     target_goal = NavigateThroughPoses.Goal()
                     self.get_logger().info("Edge Action Manager: Robot current pose: {},{}"
                                                 .format(next_goal.pose.position.x, next_goal.pose.position.y))
-                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_RECOVERY_STATE
+                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_PREPARATION_STATE
                     self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
                     get_proper_alignment = self.execute_row_recovery(intermediate_pose)
                     if(get_proper_alignment == False):
                         self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
                         self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
+                        self.allowed_row_operation = False
                         return False
                     self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
                     self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
@@ -702,6 +717,7 @@ class EdgeActionManager(rclpy.node.Node):
                         if(get_proper_alignment == False):
                             self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
                             self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
+                            self.allowed_row_operation = False
                             return False
                         else:
                             self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
@@ -710,6 +726,7 @@ class EdgeActionManager(rclpy.node.Node):
                             if(step_moved == False):
                                 self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
                                 self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
+                                self.allowed_row_operation = False
                                 return False 
                     if(get_to_goal):
                         if step_moved:
@@ -722,5 +739,6 @@ class EdgeActionManager(rclpy.node.Node):
                             self.get_logger().error("Edge Action Manager: Can not reach to the final goal {},{}"
                                             .format(next_goal.pose.position.x, next_goal.pose.position.y))
                         break
+        self.allowed_row_operation = False
         return True 
                             

@@ -38,7 +38,7 @@ class ActionsType:
         self.BT_GOAL_ALIGN = "bt_tree_goal_align"
         self.BT_IN_ROW = "bt_tree_in_row"
         self.BT_IN_ROW_OPERATION = "bt_tree_in_row_operation"
-        self.BT_IN_ROW_RECOVERY = "bt_tree_in_recovery"
+        self.BT_IN_ROW_RECOVERY = "bt_tree_in_row_recovery"
 
         self.navigation_actions = [
             self.NAVIGATE_TO_POSE,

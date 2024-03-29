@@ -20,6 +20,7 @@ from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 import time 
+from std_msgs.msg import Bool
 from threading import Thread, Event 
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup 
 from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor 
@@ -46,6 +47,7 @@ class TopologicalNavLoc(rclpy.node.Node):
         self.closest_edge_ids = []
         self.closest_edge_dists = []
         self.node_poses = {}
+        self.current_closest_node_name = ""
         
         # TODO: remove Temporary arg until tags functionality is MongoDB independent
         self.with_tags = wtags
@@ -61,6 +63,7 @@ class TopologicalNavLoc(rclpy.node.Node):
         self.wd_pub = self.create_publisher(Float32,'closest_node_distance', qos_profile=self.qos)
         self.cn_pub = self.create_publisher(String, 'current_node', qos_profile=self.qos)
         self.ce_pub = self.create_publisher(ClosestEdges, 'closest_edges', qos_profile=self.qos)
+        self.robot_navigation_area_pub = self.create_publisher(Bool, 'robot_navigation_area', qos_profile=self.qos)
 
         self.force_check = True
         self.rec_map = False
@@ -178,11 +181,13 @@ class TopologicalNavLoc(rclpy.node.Node):
                                     not_loc=False
                                     closeststr=str(i['name'])
                                     currentstr=str(i['name'])
+                                    self.current_closest_node_name = currentstr
                                     self.force_check = False
                             else:                               # If not, it is localised!!!
                                 not_loc=False
                                 closeststr=str(i['name'])
                                 currentstr=str(i['name'])
+                                self.current_closest_node_name = currentstr
                                 self.force_check = False
                 else:
                     self.force_check = True
@@ -195,6 +200,7 @@ class TopologicalNavLoc(rclpy.node.Node):
                             if self.point_in_poly(self.distances[ind]['node'], msg) :
                                 currentstr=str(name)
                                 closeststr=currentstr
+                                self.current_closest_node_name = currentstr
                                 not_loc=False
                         ind+=1
                             
@@ -210,10 +216,17 @@ class TopologicalNavLoc(rclpy.node.Node):
                 
                 # distance to physically closest node.
                 closest_dist = np.round(self.distances[0]["dist"], 3)
+                
                 self.publishTopics(closeststr, closest_dist, currentstr, closest_edges, list(np.round(edge_dists, 3)))
                 self.throttle=1
             else:
                 self.throttle +=1
+            robot_current_area_info = Bool()
+            if("c" in self.current_closest_node_name and (self.current_closest_node_name[-1].isdigit() or self.current_closest_node_name[-1] == "b")):
+                robot_current_area_info.data = True
+            else:
+                robot_current_area_info.data = False 
+            self.robot_navigation_area_pub.publish(robot_current_area_info)
         except TransformException as ex:
             self.get_logger().error(f'Could not transform {self.tmap_frame} to {self.base_frame}: {ex}')
             pass  
