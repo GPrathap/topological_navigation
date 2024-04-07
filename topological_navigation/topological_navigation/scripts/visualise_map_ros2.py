@@ -81,7 +81,7 @@ class TopoMap2Vis(rclpy.node.Node):
         self.callback_goto_client = ReentrantCallbackGroup()
         self.callback_goto_subs = ReentrantCallbackGroup()
         self.executor_goto_client = SingleThreadedExecutor()
-        self.executor_goto_client_check = SingleThreadedExecutor()
+        # self.executor_goto_client_check = SingleThreadedExecutor()
         self.goto_node_executor = None  
 
         self.topmap_pub = self.create_publisher(MarkerArray, 'topological_map_visualisation', qos_profile=self.latching_qos)
@@ -270,11 +270,13 @@ class TopoMap2Vis(rclpy.node.Node):
             while rclpy.ok():
                 try: 
                     rclpy.spin_once(self, executor=self.executor_goto_client)
+                    # rclpy.spin_until_future_complete(self, cancel_future, executor=self.executor_goto_client, timeout_sec=2.0)
                     if cancel_future.done() and self.goal_get_result_future.done():
                         self.action_status = self.goal_get_result_future.result().status
                         self.get_logger().info("The goal cancel error code {} ".format(self.get_goal_cancle_error_msg(cancel_future.result().return_code)))
                         return True 
                 except Exception as e:
+                    # self.goal_handle = None
                     self.get_logger().error("Edge Action Manager: error while canceling the previous action")
                     return False 
 
@@ -345,6 +347,7 @@ class TopoMap2Vis(rclpy.node.Node):
         while rclpy.ok():
             try:
                 rclpy.spin_once(self, executor=self.executor_goto_client)
+                # rclpy.spin_until_future_complete(self, send_goal_future, executor=self.executor_goto_client, timeout_sec=2.0)
                 if send_goal_future.done():
                     self.goal_handle = send_goal_future.result()
                     break
@@ -372,6 +375,7 @@ class TopoMap2Vis(rclpy.node.Node):
                     return True 
             except Exception as e:
                 self.get_logger().error("Error while executing go to node policy {} ".format(e))
+                # self.goal_get_result_future = None
                 return False  
 
     def get_colour(self, number):
