@@ -134,9 +134,9 @@ class EdgeActionManager(rclpy.node.Node):
         self.latching_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
         self.bt_trees =  {}
         self.in_row_operation = False
-        self.in_row_inter_pose = []
         self.control_server_configs = []
         self.inrow_step_size = inrow_step_size
+        self.is_row_boundary_published = False
         self.intermediate_dis = intermediate_dis
         self.nav2_client_callback_group = MutuallyExclusiveCallbackGroup()
 
@@ -263,6 +263,8 @@ class EdgeActionManager(rclpy.node.Node):
         return True 
     
     def get_goal_align_if(self, edge_id, current_action, next_edge_id=None):
+        # print("==========================get_goal_align_if===============================")
+        # print("==========edge_id, current_action, next_edge_id==========================", edge_id, current_action, next_edge_id)
         edges = edge_id.split("_")
         if next_edge_id is not None:
             next_edge_ids = next_edge_id.split("_")
@@ -270,6 +272,7 @@ class EdgeActionManager(rclpy.node.Node):
                 next_goal_stage = next_edge_ids[1].split("-")
                 if len(next_goal_stage) == 2:
                     if (next_goal_stage[1] in self.ACTIONS.GOAL_ALIGN_INDEX) or (next_goal_stage[1] not in self.ACTIONS.GOAL_ALIGN_GOAL):
+                        # print("=======current_action frist: ", current_action)
                         return current_action
                     
         if len(edges) == 2:
@@ -277,7 +280,9 @@ class EdgeActionManager(rclpy.node.Node):
             goal_stage = goal.split("-")
             if len(goal_stage) == 2:
                 if goal_stage[1] in self.ACTIONS.GOAL_ALIGN_INDEX:
+                    # print("=======current_action second: ", self.ACTIONS.GOAL_ALIGN)
                     return self.ACTIONS.GOAL_ALIGN 
+        # print("=======current_action same: ", current_action)
         return current_action
 
     def set_nav_client(self):
@@ -390,6 +395,25 @@ class EdgeActionManager(rclpy.node.Node):
     def construct_navigate_through_poses_goal(self, goals, actions, edge_ids):
         action_msgs, control_server_configs = self.get_navigate_through_poses_goal(goals, actions, edge_ids)
         return action_msgs, control_server_configs 
+    
+    def check_edges_area_same(self, side_edges):
+        edge_poses = []
+        if(len(side_edges) >= 2):
+            for key, val in side_edges.items():
+                for pose in val:
+                    edge_poses.append(np.array([pose.pose.position.x, pose.pose.position.y]))
+                if(len(edge_poses) == 2):
+                    if(np.linalg.norm(edge_poses[0]-edge_poses[1]) < 0.001):
+                        return True 
+        return False
+    
+    def check_target_is_same(self, node1, node2):
+        target1 = np.array([node1["pose"]["position"]["x"], node1["pose"]["position"]["y"]])
+        target2 = np.array([node2["pose"]["position"]["x"], node1["pose"]["position"]["y"]])
+        if(np.linalg.norm(target1-target2) < 0.001):
+            return True 
+        return False
+
 
     def get_navigate_through_poses_goal(self, poses, actions, edge_ids):
         # goals = []
@@ -397,7 +421,8 @@ class EdgeActionManager(rclpy.node.Node):
         control_server_configs = {}
         # edge_actions = []
         action_msgs = []
-        # print("===============poses: {}".format(poses))
+        self.is_row_boundary_published = False
+        edge_action_is_valid = True
         for seg_i, nodes  in poses.items():
             nav_goal = NavigateThroughPoses.Goal()
             # print("===============nodes: {}".format(nodes))     
@@ -415,20 +440,24 @@ class EdgeActionManager(rclpy.node.Node):
                 control_server_configs[self.ACTIONS.ROW_TRAVERSAL] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin]
                 if(self.ACTIONS.ROW_TRAVERSAL in self.bt_trees):
                     nav_goal.behavior_tree = self.bt_trees[self.ACTIONS.ROW_TRAVERSAL]
+                edge_action_is_valid = True
                 
             if((action == self.ACTIONS.NAVIGATE_TO_POSE) or (action == self.ACTIONS.ROW_CHANGE)):
                 controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.NAVIGATE_TO_POSE]
                 control_server_configs[self.ACTIONS.NAVIGATE_TO_POSE] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin] 
                 if(self.ACTIONS.NAVIGATE_TO_POSE in self.bt_trees):
                     nav_goal.behavior_tree = self.bt_trees[self.ACTIONS.NAVIGATE_TO_POSE]
+                edge_action_is_valid = True
                     
             if(action == self.ACTIONS.GOAL_ALIGN):
                 controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.GOAL_ALIGN]
                 control_server_configs[self.ACTIONS.GOAL_ALIGN] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin] 
                 if(self.ACTIONS.GOAL_ALIGN in self.bt_trees):
                     nav_goal.behavior_tree = self.bt_trees[self.ACTIONS.GOAL_ALIGN]
+                edge_action_is_valid = True
 
             if(action == self.ACTIONS.ROW_TRAVERSAL and self.in_row_operation == True and (len(nodes) > 0)):
+                # print("===========edge_id {} edge_ids {}".format(edge_id, edge_ids))
                 self.target_row_edge_id = edge_id.split("_")[0]
                 tag_id = self.target_row_edge_id.split("-")[1]
                 self.target_row_edge_id = self.target_row_edge_id[:-1] + self.ACTIONS.ROW_START_INDEX
@@ -443,7 +472,27 @@ class EdgeActionManager(rclpy.node.Node):
                 
                 target_pose_frame_id = nodes[0]["target_pose"]["header"]["frame_id"]
                 last_goal = nodes[-1]
-                # print("===============last_goal: {}".format(last_goal))     
+
+                if(len(nodes) > 1):
+                    if(self.check_target_is_same(cen["node"], last_goal["target_pose"])):
+                        last_goal = nodes[0]
+
+                selected_last_node = last_goal
+                if(len(nodes) == 1):
+                    edges = edge_id.split("_")
+                    if(len(edges) == 2):
+                        edge_0, edge_1 = edges[0], edges[1]
+                        tag_0, tag_1 = edge_0.split("-")[1], edge_1.split("-")[1]
+                        if(tag_1 == tag_id):
+                                selected_last_node["target_pose"]["pose"] = self.route_search.get_node_from_tmap2(edge_0)["node"]["pose"]
+                        elif(tag_0 == tag_id):
+                                selected_last_node["target_pose"]["pose"] = self.route_search.get_node_from_tmap2(edge_1)["node"]["pose"]
+                    elif(len(selected_last_node) == 0 and self.current_node is not None):
+                        selected_last_node["target_pose"]["pose"] = self.route_search.get_node_from_tmap2(self.current_node)["node"]["pose"]
+                    else:
+                        self.get_logger().error("Cound not find bounday edge...") 
+                        
+                # print("===============nodes {}".format(nodes))     
                 for child in children:
                     if tag_id in child:
                         # self.get_logger().info("=============children h selected ===== {}".format(child))
@@ -451,25 +500,31 @@ class EdgeActionManager(rclpy.node.Node):
                         # self.get_logger().info("=============after children===== {}".format(child))
                         # distance = self.route_search.get_distance_to_node_tmap2(cen, child_node)
                         side_intermediate_pose = self.get_intermediate_pose(cen, child_node, target_pose_frame_id)
-                        side_last_intermediate_pose = self.get_last_intermediate_pose(side_intermediate_pose, cen, last_goal)
+                        side_last_intermediate_pose = self.get_last_intermediate_pose(side_intermediate_pose, cen, selected_last_node)
                         self.selected_edges[child] = [side_intermediate_pose, side_last_intermediate_pose]
                         # self.get_logger().info("=============children i selected ===== {} {} ".format(side_intermediate_pose, side_last_intermediate_pose))
 
                 if(len(self.selected_edges) == 1):
-                    self.selected_edges["side_wall"] = self.get_intermediate_poses_interpolated(self.selected_edges, cen, last_goal)
+                    self.selected_edges["side_wall"] = self.get_intermediate_poses_interpolated(self.selected_edges, cen, selected_last_node)
 
-                # self.get_logger().info("=============children i selected ===== {}".format(len(self.selected_edges))) 
-                action_msg.setSideEdges(self.selected_edges, target_pose_frame_id)  
-                action = self.ACTIONS.ROW_OPERATION
-                # self.get_logger().info("=============children i selected ===== {}".format(self.selected_edges)) 
+                if(self.check_edges_area_same(self.selected_edges)):
+                    edge_action_is_valid = True
+                    self.get_logger().error("Edge Action Manager: Bounday edges are same")
+                else:
+                    edge_action_is_valid = True   
+                if edge_action_is_valid:
+                    action_msg.setSideEdges(self.selected_edges, target_pose_frame_id) 
+                    if self.is_row_boundary_published == False:
+                        boundary_info = action_msg.getBoundary()
+                        self.boundary_publisher.publish(boundary_info)
+                        self.is_row_boundary_published = True  
+                    action = self.ACTIONS.ROW_OPERATION
 
             self.get_logger().info("Edge Action Manager:  Action {}  Bt_tree : {}".format(action, nav_goal.behavior_tree))
-            # goals.append(nav_goal)
-            # actions_execute.append(action)
-
-            action_msg.setAction(action)
-            action_msg.setNavGoal(nav_goal)
-            action_msgs.append(action_msg)
+            if edge_action_is_valid:
+                action_msg.setAction(action)
+                action_msg.setNavGoal(nav_goal)
+                action_msgs.append(action_msg)
                 
         return action_msgs, control_server_configs
     
@@ -689,6 +744,7 @@ class EdgeActionManager(rclpy.node.Node):
         boundary_info = action_msg.getBoundary()
         target_frame_id = action_msg.getTargetFrameId()
         self.boundary_publisher.publish(boundary_info)  
+        self.is_row_boundary_published = False
 
         self.robot_current_status = self.ACTIONS.ROBOT_STATUS_NATURAL_STATE
         self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
@@ -790,7 +846,6 @@ class EdgeActionManager(rclpy.node.Node):
             if target_action in self.control_server_configs:
                 control_server_config = self.control_server_configs[target_action]
                 self.update_params_control_server.set_params(control_server_config)
-
             if (target_action == self.ACTIONS.ROW_OPERATION):
                 row_operation_is_completed = self.execute_row_operation_action(action_msg)
                 if(row_operation_is_completed == False):
@@ -798,14 +853,18 @@ class EdgeActionManager(rclpy.node.Node):
             else:
                 self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
                 self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
-
                 send_goal_future = self.client.send_goal_async(target_goal,  feedback_callback=self.feedback_callback)
                 goal_accepted = self.send_goal_request(send_goal_future, target_action)
                 if(goal_accepted == False):
+                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
+                    self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
                     return False 
                 processed_goal = self.processing_goal_request(target_action)
                 if(processed_goal == False):
+                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
+                    self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
                     return processed_goal
-            
+        self.robot_current_status = self.ACTIONS.ROBOT_STATUS_NATURAL_STATE
+        self.publish_robot_current_status_msg(self.ACTIONS.NAVIGATE_THROUGH_POSES, self.robot_current_status)
         return True 
                             
