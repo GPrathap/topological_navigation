@@ -263,8 +263,6 @@ class EdgeActionManager(rclpy.node.Node):
         return True 
     
     def get_goal_align_if(self, edge_id, current_action, next_edge_id=None):
-        # print("==========================get_goal_align_if===============================")
-        # print("==========edge_id, current_action, next_edge_id==========================", edge_id, current_action, next_edge_id)
         edges = edge_id.split("_")
         if next_edge_id is not None:
             next_edge_ids = next_edge_id.split("_")
@@ -272,17 +270,16 @@ class EdgeActionManager(rclpy.node.Node):
                 next_goal_stage = next_edge_ids[1].split("-")
                 if len(next_goal_stage) == 2:
                     if (next_goal_stage[1] in self.ACTIONS.GOAL_ALIGN_INDEX) or (next_goal_stage[1] not in self.ACTIONS.GOAL_ALIGN_GOAL):
-                        # print("=======current_action frist: ", current_action)
                         return current_action
-                    
+                elif len(next_goal_stage) == 1:
+                    if(current_action == self.ACTIONS.ROW_TRAVERSAL):
+                        return current_action
         if len(edges) == 2:
             goal = edges[1]
             goal_stage = goal.split("-")
             if len(goal_stage) == 2:
                 if goal_stage[1] in self.ACTIONS.GOAL_ALIGN_INDEX:
-                    # print("=======current_action second: ", self.ACTIONS.GOAL_ALIGN)
                     return self.ACTIONS.GOAL_ALIGN 
-        # print("=======current_action same: ", current_action)
         return current_action
 
     def set_nav_client(self):
