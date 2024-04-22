@@ -14,6 +14,7 @@ class ActionsType:
         self.GOAL_ALIGN_INDEX = ["ca"]
         self.GOAL_ALIGN_GOAL = ["cb"]
         self.ROW_START_INDEX = "a"
+        self.ROW_COLUMN_START_INDEX = "c"
 
         self.ROBOT_STATUS_PREPARATION_STATE = "PREPARATION_STATE"
         self.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE = "AUTONOMOUS_NAVIGATION_STATE"

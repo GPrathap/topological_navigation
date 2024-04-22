@@ -778,8 +778,8 @@ class EdgeActionManager(rclpy.node.Node):
                         node_id = self.current_node.split("-")
                         if (len(node_id) == 2):
                             node_id = node_id[1]
-                            if(node_id.startswith("c")):
-                                if ("a" not in node_id):
+                            if(node_id.startswith(self.ACTIONS.ROW_COLUMN_START_INDEX)):
+                                if (self.ACTIONS.ROW_START_INDEX not in node_id):
                                     self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_HARVESTING_STATE
 
                     self.publish_robot_current_status_msg(self.ACTIONS.ROW_OPERATION, self.robot_current_status)
