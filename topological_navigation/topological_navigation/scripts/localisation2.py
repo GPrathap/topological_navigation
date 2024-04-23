@@ -24,7 +24,7 @@ from std_msgs.msg import Bool
 from threading import Thread, Event 
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup 
 from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor 
-
+from topological_navigation.scripts.actions_bt import ActionsType 
 ###################################################################################################################    
 class TopologicalNavLoc(rclpy.node.Node):
 
@@ -63,7 +63,7 @@ class TopologicalNavLoc(rclpy.node.Node):
         self.wd_pub = self.create_publisher(Float32,'closest_node_distance', qos_profile=self.qos)
         self.cn_pub = self.create_publisher(String, 'current_node', qos_profile=self.qos)
         self.ce_pub = self.create_publisher(ClosestEdges, 'closest_edges', qos_profile=self.qos)
-        self.robot_navigation_area_pub = self.create_publisher(Bool, 'robot_navigation_area', qos_profile=self.qos)
+        self.robot_navigation_area_pub = self.create_publisher(String, 'robot_navigation_area', qos_profile=self.qos)
 
         self.force_check = True
         self.rec_map = False
@@ -88,6 +88,8 @@ class TopologicalNavLoc(rclpy.node.Node):
         self.subs_topmap = self.create_subscription(String, '/topological_map_2'
                                 , self.MapCallback, qos_profile=self.qos, callback_group=self.timer_map_group)
         self.subs_topmap  # prevent unused variable warning
+
+        self.ACTIONS = ActionsType()
 
         self.get_logger().info("Localisation waiting for the Topological Map...")
         while rclpy.ok():
@@ -221,14 +223,25 @@ class TopologicalNavLoc(rclpy.node.Node):
                 self.throttle=1
             else:
                 self.throttle +=1
-            robot_current_area_info = Bool()
-            if("c" in self.current_closest_node_name and (self.current_closest_node_name[-1].isdigit() or self.current_closest_node_name[-1] == "b")):
-                robot_current_area_info.data = True
-            else:
-                robot_current_area_info.data = False 
+
+            robot_current_area_info = String()
+            robot_nav_area = None
+            if(robot_nav_area is None and self.ACTIONS.ROW_COLUMN_START_INDEX in self.current_closest_node_name and (self.current_closest_node_name[-1].isdigit() or self.current_closest_node_name[-1] == self.ACTIONS.ROW_COLUMN_START_NEXT_INDEX)):
+                robot_nav_area = self.ACTIONS.INSIDE_POLYTUNNEL
+            elif(len(self.closest_edge_ids) > 0):
+                edge_ids_list = self.closest_edge_ids[0]
+                edge_ids = edge_ids_list.split("_")
+                if(len(edge_ids) == 2):
+                        if((self.ACTIONS.GOAL_ALIGN_INDEX[0] in edge_ids_list) and (self.ACTIONS.GOAL_ALIGN_GOAL[0] in edge_ids_list)):
+                            robot_nav_area = self.ACTIONS.TRANSITION_INTO_POLYTUNNEL
+         
+            if(robot_nav_area is None):
+                robot_nav_area = self.ACTIONS.OUTSIDE_POLYTUNNEL
+            robot_current_area_info.data = robot_nav_area
             self.robot_navigation_area_pub.publish(robot_current_area_info)
+            
         except TransformException as ex:
-            self.get_logger().error(f'Could not transform {self.tmap_frame} to {self.base_frame}: {ex}')
+            self.get_logger().warn(f'Could not transform {self.tmap_frame} to {self.base_frame}: {ex}')
             pass  
         
 
