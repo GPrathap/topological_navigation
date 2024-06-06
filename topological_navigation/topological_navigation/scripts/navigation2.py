@@ -91,6 +91,7 @@ class TopologicalNavServer(rclpy.node.Node):
         self.declare_parameter('use_nav2_follow_route', Parameter.Type.BOOL)
         self.declare_parameter('use_in_row_operation', Parameter.Type.BOOL)
         self.declare_parameter('inrow_step_size', Parameter.Type.DOUBLE)
+        self.declare_parameter('inrow_step_intermediate_dis', Parameter.Type.DOUBLE)
         self.declare_parameter(self.ACTIONS.BT_DEFAULT, Parameter.Type.STRING)
         self.declare_parameter(self.ACTIONS.BT_IN_ROW, Parameter.Type.STRING)
         self.declare_parameter(self.ACTIONS.BT_GOAL_ALIGN, Parameter.Type.STRING)
@@ -102,6 +103,7 @@ class TopologicalNavServer(rclpy.node.Node):
         self.use_nav2_follow_route = self.get_parameter_or("use_nav2_follow_route", Parameter('bool', Parameter.Type.BOOL, False)).value
         self.use_in_row_operation = self.get_parameter_or("use_in_row_operation", Parameter('bool', Parameter.Type.BOOL, False)).value
         self.inrow_step_size = self.get_parameter_or("inrow_step_size", Parameter('double', Parameter.Type.DOUBLE, 2.0)).value 
+        self.inrow_step_intermediate_dis = self.get_parameter_or("inrow_step_intermediate_dis", Parameter('double', Parameter.Type.DOUBLE, -1.0)).value 
         
         row_traversal_planner = self.get_parameter_or("row_traversal_planner", Parameter('str', Parameter.Type.STRING, "dwb_core::DWBLocalPlanner")).value
         default_planner = self.get_parameter_or("default_planner", Parameter('str', Parameter.Type.STRING, "dwb_core::DWBLocalPlanner")).value
@@ -168,7 +170,7 @@ class TopologicalNavServer(rclpy.node.Node):
                 break 
         
         self.edge_action_manager = edge_action_manager_server 
-        self.edge_action_manager.init(self.ACTIONS, self.rsearch, self.update_params_control_server, self.inrow_step_size)
+        self.edge_action_manager.init(self.ACTIONS, self.rsearch, self.update_params_control_server, self.inrow_step_size, self.inrow_step_intermediate_dis)
 
         self.edge_reconfigure = self.get_parameter_or("reconfigure_edges", Parameter('bool', Parameter.Type.BOOL, True)).value
         self.srv_edge_reconfigure = self.get_parameter_or("reconfigure_edges_srv", Parameter('bool', Parameter.Type.BOOL, False)).value 

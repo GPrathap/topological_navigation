@@ -788,25 +788,35 @@ class EdgeActionManager(rclpy.node.Node):
                     # target_goal = NavigateThroughPoses.Goal()
                     self.get_logger().info("Edge Action Manager: Robot current pose: {},{}"
                                                 .format(next_goal.pose.position.x, next_goal.pose.position.y))
-                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_PREPARATION_STATE
-                    self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
-                    get_proper_alignment = self.execute_row_recovery(intermediate_pose, target_frame_id)
-                    if(get_proper_alignment == False):
-                        self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
-                        self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
-                        return False
-                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
-                    self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
-                    step_moved = self.execute_row_operation_one_step(next_goal, target_frame_id)
-                    if(step_moved == False):
-                        intermediate_pose, _ = inrow_opt.getNextIntermediateGoal(self.current_robot_pose)
-                        self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_RECOVERY_STATE
+                    if(self.intermediate_dis > 0.0):
+                        self.robot_current_status = self.ACTIONS.ROBOT_STATUS_PREPARATION_STATE
                         self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
                         get_proper_alignment = self.execute_row_recovery(intermediate_pose, target_frame_id)
                         if(get_proper_alignment == False):
                             self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
                             self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
                             return False
+                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
+                    self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
+                    step_moved = self.execute_row_operation_one_step(next_goal, target_frame_id)
+                    if(step_moved == False):
+                        if(self.intermediate_dis > 0.0):
+                            intermediate_pose, _ = inrow_opt.getNextIntermediateGoal(self.current_robot_pose)
+                            self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_RECOVERY_STATE
+                            self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
+                            get_proper_alignment = self.execute_row_recovery(intermediate_pose, target_frame_id)
+                            if(get_proper_alignment == False):
+                                self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
+                                self.publish_robot_current_status_msg(self.ACTIONS.ROW_RECOVERY, self.robot_current_status)
+                                return False
+                            else:
+                                self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
+                                self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
+                                step_moved = self.execute_row_operation_one_step(next_goal, target_frame_id)
+                                if(step_moved == False):
+                                    self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
+                                    self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
+                                    return False 
                         else:
                             self.robot_current_status = self.ACTIONS.ROBOT_STATUS_AUTONOMOUS_NAVIGATION_STATE
                             self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
@@ -814,7 +824,7 @@ class EdgeActionManager(rclpy.node.Node):
                             if(step_moved == False):
                                 self.robot_current_status = self.ACTIONS.ROBOT_STATUS_DISABLE_STATE
                                 self.publish_robot_current_status_msg(self.ACTIONS.ROW_TRAVERSAL, self.robot_current_status)
-                                return False 
+                                return False
                     if(get_to_goal):
                         if step_moved:
                             self.robot_current_status = self.ACTIONS.ROBOT_STATUS_NATURAL_STATE
