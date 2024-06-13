@@ -411,7 +411,20 @@ class EdgeActionManager(rclpy.node.Node):
             return True 
         return False
 
-
+    def two_smallest_indices(self, lst):
+        if len(lst) < 1:
+            return []
+        if len(lst) < 2:
+            return [0]
+        lst_copy = lst[:]
+        min_index1 = lst_copy.index(min(lst_copy))
+        lst_copy[min_index1] = float('inf')
+        min_index2 = lst_copy.index(min(lst_copy))
+        return [min_index1, min_index2]
+    
+    def extract_number(self, s):
+                    return int(s.split('-')[0][1:])
+                
     def get_navigate_through_poses_goal(self, poses, actions, edge_ids):
         # goals = []
         # actions_execute = []
@@ -464,8 +477,40 @@ class EdgeActionManager(rclpy.node.Node):
                 self.get_logger().info("Edge Action Manager: Edge id and tag id  {} {}".format(self.target_row_edge_id, tag_id))
                 cen =  self.route_search.get_node_from_tmap2(self.target_row_edge_id)
                 children = self.route_search.get_connected_nodes_tmap2(cen)
+                selected_row_edge_nodes = {}
+                for next_edge in children:
+                    if(next_edge.startswith(self.ACTIONS.OUTSIDE_EDGE_START_INDEX)):
+                        upper_nodes =  self.route_search.get_node_from_tmap2(next_edge)["node"]["edges"]
+                        for edges_all in upper_nodes:
+                            if((self.ACTIONS.GOAL_ALIGN_INDEX[0] in edges_all["node"]) 
+                                                and (self.target_row_edge_id not in edges_all["node"])):
+                                
+                                targte_pose = self.route_search.get_node_from_tmap2(edges_all["node"])["node"]["pose"]
+                                targte_pose_x_y = np.array([targte_pose["position"]["x"], targte_pose["position"]["y"]])
+                                selected_row_edge_nodes[edges_all["node"]] = (targte_pose, targte_pose_x_y)
+                
+                center_pose = self.route_search.get_node_from_tmap2(self.target_row_edge_id)["node"]["pose"]["position"]
+                center_pose = np.array([center_pose["x"], center_pose["y"]])
+                distance_vector = []
+                distance_with_edge_ids = {}
+                index_dis = 0
+                for the_key, the_value in selected_row_edge_nodes.items():  
+                    distance_vector.append(np.linalg.norm(center_pose- the_value[1]))
+                    distance_with_edge_ids[index_dis] = the_key
+                    index_dis += 1
+                # print("index distance .....", distance_vector)    
+                min_indices = self.two_smallest_indices(distance_vector)
+                children = []
+                for index in min_indices:
+                    children.append(distance_with_edge_ids[index])
+                    # print("----------Index.... {} ".format(distance_with_edge_ids[index]))
+                
+                # Sort the list based on the extracted number in descending order
+                children = sorted(children, key=self.extract_number, reverse=True)
+
+                # self.get_logger().info("Edge Action Manager: Next Egdges edges {}".format(selected_row_edge_nodes))  
+                        
                 self.get_logger().info("Edge Action Manager: Children edges {}".format(children)) 
-                self.selected_edges = {}
                 
                 target_pose_frame_id = nodes[0]["target_pose"]["header"]["frame_id"]
                 last_goal = nodes[-1]
@@ -489,8 +534,10 @@ class EdgeActionManager(rclpy.node.Node):
                     else:
                         self.get_logger().error("Cound not find bounday edge...") 
                         
-                # print("===============nodes {}".format(nodes))     
+                # print("===============nodes {}".format(nodes)) 
+                self.selected_edges = {}    
                 for child in children:
+                    # self.get_logger().info("=============children h selected ===== {} {} ".format(child, tag_id))
                     if tag_id in child:
                         # self.get_logger().info("=============children h selected ===== {}".format(child))
                         child_node = self.route_search.get_node_from_tmap2(child)
@@ -578,7 +625,7 @@ class EdgeActionManager(rclpy.node.Node):
         return target_pose        
 
 
-    def get_intermediate_pose(self, pose1, pose2, header_frame_id):
+    def get_intermediate_pose(self, pose1, pose2, header_frame_id, dev_factor=1.0):
         header = Header()
         # header.stamp = self.get_clock().now().to_msg()
         header.frame_id = header_frame_id
@@ -586,8 +633,13 @@ class EdgeActionManager(rclpy.node.Node):
         target_pose.header = header  
         pose1 =  pose1["node"]["pose"]
         pose2 =  pose2["node"]["pose"]
-        target_pose.pose.position.x = (pose1["position"]["x"] + pose2["position"]["x"])/2.0
-        target_pose.pose.position.y = (pose1["position"]["y"] + pose2["position"]["y"])/2.0 
+        if(dev_factor > 1.0):
+            target_pose.pose.position.x = (pose1["position"]["x"] + pose2["position"]["x"])/2.0
+            target_pose.pose.position.y = (pose1["position"]["y"] + pose2["position"]["y"])/2.0 
+        else:
+            target_pose.pose.position.x = pose2["position"]["x"]
+            target_pose.pose.position.y = pose2["position"]["y"]
+            
         target_pose.pose.position.z = pose1["position"]["z"]
         target_pose.pose.orientation.w = pose1["orientation"]["w"]
         target_pose.pose.orientation.x = pose1["orientation"]["x"]

@@ -16,6 +16,7 @@ class ActionsType:
         self.ROW_START_INDEX = "a"
         self.ROW_COLUMN_START_INDEX = "c"
         self.ROW_COLUMN_START_NEXT_INDEX = "b"
+        self.OUTSIDE_EDGE_START_INDEX = "WayPoint"
 
         self.INSIDE_POLYTUNNEL = "INSIDE_POLYTUNNEL"
         self.OUTSIDE_POLYTUNNEL = "OUTSIDE_POLYTUNNEL"
