@@ -423,7 +423,7 @@ class EdgeActionManager(rclpy.node.Node):
         return [min_index1, min_index2]
     
     def extract_number(self, s):
-                    return int(s.split('-')[0][1:])
+        return float(s.split('-')[0][1:])
                 
     def get_navigate_through_poses_goal(self, poses, actions, edge_ids):
         # goals = []
