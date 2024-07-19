@@ -24,7 +24,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Pose
 
-from sensor_msgs.msg import Joy
+from sensor_msgs.msg import Joy, Imu
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -55,8 +55,9 @@ class RobotTmapping(Node):
         self.declare_parameter( 'remove_btn'      , Parameter.Type.INTEGER )  #remove_node_button_index
         self.declare_parameter( 'gen_map_btn'     , Parameter.Type.INTEGER )  #generate_tmap_button_index 
         # Topics 
-        self.declare_parameter( 'topic_joy'       , Parameter.Type.STRING  )  #remove_node_button_index
-        self.declare_parameter( 'topic_pose'      , Parameter.Type.STRING  )  #generate_tmap_button_index 
+        self.declare_parameter( 'topic_joy'       , Parameter.Type.STRING  )  
+        self.declare_parameter( 'topic_pose'      , Parameter.Type.STRING  )   
+        self.declare_parameter( 'topic_imu'       , Parameter.Type.STRING  )   
        
 
         self.pointset        = self.get_parameter_or('tmap'            , Parameter('str'   , Parameter.Type.STRING, '')  ).value
@@ -73,6 +74,7 @@ class RobotTmapping(Node):
         self.gen_map_btn     = self.get_parameter_or('gen_map_btn'     , Parameter('int'   , Parameter.Type.INTEGER, 3)  ).value
         self.topic_joy       = self.get_parameter_or('topic_joy'       , Parameter('str'   , Parameter.Type.STRING, '/joy')  ).value
         self.topic_pose      = self.get_parameter_or('topic_pose'      , Parameter('str'   , Parameter.Type.STRING, '/gps_base/odometry')  ).value
+        self.topic_imu       = self.get_parameter_or('topic_imu'       , Parameter('str'   , Parameter.Type.STRING, '/gps_base/yaw')  ).value
 
 
 
@@ -96,6 +98,7 @@ class RobotTmapping(Node):
 
         # Subscribers
         self.create_subscription(Joy     , self.topic_joy , self.joy_cb       , 10)
+        self.create_subscription(Imu     , self.topic_pose, self.robot_imu_cb , 10)
         self.create_subscription(Odometry, self.topic_pose, self.robot_pose_cb, 10)
 
         # Publishers
@@ -108,6 +111,8 @@ class RobotTmapping(Node):
 
         # Load existing nodes from tmap_dir if there are any
         self.get_tmap_nodes()
+
+        self.robot_imu_msg = None
 
 
     def load_yaml(self, filename):
@@ -149,6 +154,11 @@ class RobotTmapping(Node):
 
     def robot_pose_cb(self, msg):
         self.robot_pose_msg = msg.pose.pose
+        #Please note, this is an ugly hack, the better way to do it is via topics sync 
+        self.robot_pose_msg.orientation = self.robot_imu_msg
+
+    def robot_imu_cb(self, msg):
+        self.robot_imu_msg = msg.orientation
 
 
     def joy_cb(self, msg):
