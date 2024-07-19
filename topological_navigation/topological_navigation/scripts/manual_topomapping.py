@@ -155,7 +155,8 @@ class RobotTmapping(Node):
     def robot_pose_cb(self, msg):
         self.robot_pose_msg = msg.pose.pose
         #Please note, this is an ugly hack, the better way to do it is via topics sync 
-        self.robot_pose_msg.orientation = self.robot_imu_msg
+        if self.robot_imu_msg != None:
+            self.robot_pose_msg.orientation = self.robot_imu_msg
 
     def robot_imu_cb(self, msg):
         self.robot_imu_msg = msg.orientation
