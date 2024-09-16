@@ -679,6 +679,9 @@ class EdgeActionManager(rclpy.node.Node):
         target_goal = NavigateThroughPoses.Goal()
         if(self.ACTIONS.ROW_TRAVERSAL in self.bt_trees): 
             target_goal.behavior_tree = self.bt_trees[self.ACTIONS.ROW_TRAVERSAL]
+            self.get_logger().info("Edge Action Manager: Row traversal BT path {}".format(target_goal.behavior_tree))
+        else:
+            self.get_logger().info("Edge Action Manager: Row traversal BT path not found")
         target_pose = self.crete_pose_stamped_msg_from_position(target_pose_frame_id, next_goal)
         target_goal.poses.append(target_pose)
         controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.ROW_TRAVERSAL]
