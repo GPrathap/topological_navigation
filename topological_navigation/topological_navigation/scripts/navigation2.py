@@ -43,7 +43,7 @@ class TopologicalNavServer(rclpy.node.Node):
     _feedback_exec_policy = ExecutePolicyModeFeedback()
     _result_exec_policy = ExecutePolicyMode.Result()
 
-    def __init__(self, name, update_params_control_server, edge_action_manager_server):
+    def __init__(self, name, update_params_control_server, edge_action_manager_server , update_params_pd_regulator):
         super().__init__(name)
         rclpy.get_default_context().on_shutdown(self._on_node_shutdown)
         self.node_by_node = False
@@ -59,6 +59,7 @@ class TopologicalNavServer(rclpy.node.Node):
         self.fluid_navigation = True
         self.final_goal = False
         self.update_params_control_server = update_params_control_server
+        self.update_params_pd_regulator = update_params_pd_regulator
 
         self.current_node = "Unknown"
         self.closest_node = "Unknown"
@@ -87,6 +88,10 @@ class TopologicalNavServer(rclpy.node.Node):
         self.declare_parameter("row_traversal_planner_yaw_goal_tolerance", Parameter.Type.DOUBLE)
         self.declare_parameter("default_planner_xy_yaw_goal_tolerance", Parameter.Type.DOUBLE)
         self.declare_parameter("goal_align_planner_xy_yaw_goal_tolerance", Parameter.Type.DOUBLE)
+        
+        self.declare_parameter("row_traversal_planner_pd_params", [20.0, 0.2, 10.0, 0.2])
+        self.declare_parameter("default_planner_pd_params", [20.0, 0.2, 10.0, 0.2])
+        self.declare_parameter("goal_align_planner_pd_params", [20.0, 0.2, 10.0, 0.2])
 
         self.declare_parameter('use_nav2_follow_route', Parameter.Type.BOOL)
         self.declare_parameter('use_in_row_operation', Parameter.Type.BOOL)
@@ -123,9 +128,17 @@ class TopologicalNavServer(rclpy.node.Node):
         goal_align_planner_xy_goal_tolerance = self.get_parameter_or("goal_align_planner_xy_goal_tolerance", Parameter('double', Parameter.Type.DOUBLE, 0.2)).value
         goal_align_planner_xy_yaw_goal_tolerance = self.get_parameter_or("goal_align_planner_xy_yaw_goal_tolerance", Parameter('double', Parameter.Type.DOUBLE, 0.1)).value
 
+        self.row_traversal_planner_pd_params = self.get_parameter("row_traversal_planner_pd_params").value
+        self.default_planner_pd_params = self.get_parameter("default_planner_pd_params").value
+        self.goal_align_planner_pd_params = self.get_parameter("goal_align_planner_pd_params").value
+
         self.ACTIONS.setPlannerParams(row_traversal_planner, row_traversal_planner_xy_goal_tolerance, row_traversal_planner_yaw_goal_tolerance)
         self.ACTIONS.setPlannerParams(default_planner, default_planner_xy_goal_tolerance, default_planner_xy_yaw_goal_tolerance)
         self.ACTIONS.setPlannerParams(goal_align_planner, goal_align_planner_xy_goal_tolerance, goal_align_planner_xy_yaw_goal_tolerance)
+        
+        self.ACTIONS.setPDRegulstorParams(row_traversal_planner, self.row_traversal_planner_pd_params)
+        self.ACTIONS.setPDRegulstorParams(default_planner, self.default_planner_pd_params)
+        self.ACTIONS.setPDRegulstorParams(goal_align_planner, self.goal_align_planner_pd_params)
 
         bt_tree_default = os.path.join(get_package_share_directory('topological_navigation'), 'config', 'bt_tree_default.xml')
         bt_tree_goal_align = os.path.join(get_package_share_directory('topological_navigation'), 'config', 'bt_tree_goal_align.xml')
@@ -170,7 +183,8 @@ class TopologicalNavServer(rclpy.node.Node):
                 break 
         
         self.edge_action_manager = edge_action_manager_server 
-        self.edge_action_manager.init(self.ACTIONS, self.rsearch, self.update_params_control_server, self.inrow_step_size, self.inrow_step_intermediate_dis)
+        self.edge_action_manager.init(self.ACTIONS, self.rsearch, self.update_params_control_server
+                    , self.update_params_pd_regulator, self.inrow_step_size, self.inrow_step_intermediate_dis)
 
         self.edge_reconfigure = self.get_parameter_or("reconfigure_edges", Parameter('bool', Parameter.Type.BOOL, True)).value
         self.srv_edge_reconfigure = self.get_parameter_or("reconfigure_edges_srv", Parameter('bool', Parameter.Type.BOOL, False)).value 
@@ -1239,11 +1253,18 @@ class TopologicalNavServer(rclpy.node.Node):
 def main():
     rclpy.init(args=None)
     update_params_control_server = ParameterUpdaterNode("controller_server")
+    ROBOT_MODEL = os.environ['ROBOT_MODEL']
+    if(ROBOT_MODEL == "dogtooth"):
+        update_params_pd_regulator = ParameterUpdaterNode("dogtooth_robot")
+    elif(ROBOT_MODEL == "hunter"):
+        update_params_pd_regulator = ParameterUpdaterNode("hunter_robot")
+        
     edge_action_manager_server = EdgeActionManager("edge_action_manager")
-    node = TopologicalNavServer('topological_navigation', update_params_control_server, edge_action_manager_server)
+    node = TopologicalNavServer('topological_navigation', update_params_control_server, edge_action_manager_server, update_params_pd_regulator)
     executor = MultiThreadedExecutor()
     executor.add_node(update_params_control_server)
     executor.add_node(edge_action_manager_server)
+    executor.add_node(update_params_pd_regulator)
     executor.add_node(node)
     try:
         executor.spin()

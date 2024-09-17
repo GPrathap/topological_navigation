@@ -14,9 +14,20 @@ class ParameterUpdaterNode(Node):
         self.cli_set_param = self.create_client(SetParameters, '/' + server_name + '/set_parameters', callback_group=self.callback_group)
         self.cli_list_params = self.create_client(ListParameters, '/' + server_name + '/list_parameters' , callback_group=self.callback_group)
         self.cli_get_params = self.create_client(GetParameters, '/' + server_name + '/get_parameters', callback_group=self.callback_group)
+        counter = -1
         while not self.cli_set_param.wait_for_service(timeout_sec=1.0):
             self.get_logger().warning('service not available, waiting again... {}'.format('/' + server_name + '/set_parameters'))
-        self.get_logger().info('service /{} is available'.format(server_name))
+            counter += 1
+            if(counter > 2):
+                self.get_logger().warning('service not available {}'.format('/' + server_name + '/set_parameters'))
+                counter = 0
+                break
+        
+        if(counter == 0):     
+            self.get_logger().error('service /{} is not available'.format(server_name))
+        else:
+            self.get_logger().info('service /{} is not available'.format(server_name))
+            
         self.internal_executor = SingleThreadedExecutor()
         
     def get_parameter_value(self, parameter_value):
@@ -46,6 +57,10 @@ class ParameterUpdaterNode(Node):
         for key, value in params.items():
             param_name, param_value = key, value 
             self.req.parameters.append(Parameter(name=param_name, value=param_value).to_parameter_msg())
+        
+        while not self.cli_set_param.wait_for_service(timeout_sec=0.5):
+            return False
+        
         self.future = self.cli_set_param.call_async(self.req)
         while rclpy.ok():
             try:
@@ -65,6 +80,8 @@ class ParameterUpdaterNode(Node):
             
     def list_params(self, ):
         self.req_list = ListParameters.Request()
+        while not self.cli_set_param.wait_for_service(timeout_sec=0.5):
+            return []
         self.future = self.cli_list_params.call_async(self.req_list)
         while rclpy.ok():
             try:
@@ -87,6 +104,8 @@ class ParameterUpdaterNode(Node):
         params = {}
         self.req_get = GetParameters.Request()
         self.req_get.names = param_names 
+        while not self.cli_set_param.wait_for_service(timeout_sec=0.5):
+            return {}
         self.future = self.cli_get_params.call_async(self.req_get)
         while rclpy.ok():
             try:
