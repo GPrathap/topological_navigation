@@ -125,7 +125,7 @@ class EdgeActionManager(rclpy.node.Node):
         self.current_action = "none"
         self.dt = dict_tools()
         
-    def init(self, ACTIONS, route_search, update_params_control_server, inrow_step_size=3.0, intermediate_dis=0.7):
+    def init(self, ACTIONS, route_search, update_params_control_server, update_params_pd_regulator, inrow_step_size=3.0, intermediate_dis=0.7):
         self.ACTIONS = ACTIONS
         self.route_search = route_search
         self.goal_handle = None 
@@ -141,6 +141,7 @@ class EdgeActionManager(rclpy.node.Node):
         self.nav2_client_callback_group = MutuallyExclusiveCallbackGroup()
 
         self.update_params_control_server = update_params_control_server
+        self.update_params_pd_regulator = update_params_pd_regulator
         self.current_robot_pose = None 
         self.odom_sub = self.create_subscription(Odometry, '/odometry/global', self.odom_callback,
                                 QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
@@ -448,6 +449,7 @@ class EdgeActionManager(rclpy.node.Node):
             if( (action == self.ACTIONS.ROW_TRAVERSAL) and (self.in_row_operation == False)):
                 controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.ROW_TRAVERSAL]
                 control_server_configs[self.ACTIONS.ROW_TRAVERSAL] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin]
+                control_server_configs[self.ACTIONS.ROW_TRAVERSAL + "pd_reg"] = self.ACTIONS.planner_with_pd_regulator_config[controller_plugin]
                 if(self.ACTIONS.ROW_TRAVERSAL in self.bt_trees):
                     nav_goal.behavior_tree = self.bt_trees[self.ACTIONS.ROW_TRAVERSAL]
                 edge_action_is_valid = True
@@ -455,13 +457,15 @@ class EdgeActionManager(rclpy.node.Node):
             if((action == self.ACTIONS.NAVIGATE_TO_POSE) or (action == self.ACTIONS.ROW_CHANGE)):
                 controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.NAVIGATE_TO_POSE]
                 control_server_configs[self.ACTIONS.NAVIGATE_TO_POSE] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin] 
+                control_server_configs[self.ACTIONS.NAVIGATE_TO_POSE + "pd_reg"] = self.ACTIONS.planner_with_pd_regulator_config[controller_plugin]
                 if(self.ACTIONS.NAVIGATE_TO_POSE in self.bt_trees):
                     nav_goal.behavior_tree = self.bt_trees[self.ACTIONS.NAVIGATE_TO_POSE]
                 edge_action_is_valid = True
                     
             if(action == self.ACTIONS.GOAL_ALIGN):
                 controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.GOAL_ALIGN]
-                control_server_configs[self.ACTIONS.GOAL_ALIGN] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin] 
+                control_server_configs[self.ACTIONS.GOAL_ALIGN] = self.ACTIONS.planner_with_goal_checker_config[controller_plugin]
+                control_server_configs[self.ACTIONS.GOAL_ALIGN + "pd_reg"] = self.ACTIONS.planner_with_pd_regulator_config[controller_plugin] 
                 if(self.ACTIONS.GOAL_ALIGN in self.bt_trees):
                     nav_goal.behavior_tree = self.bt_trees[self.ACTIONS.GOAL_ALIGN]
                 edge_action_is_valid = True
@@ -679,12 +683,22 @@ class EdgeActionManager(rclpy.node.Node):
         target_goal = NavigateThroughPoses.Goal()
         if(self.ACTIONS.ROW_TRAVERSAL in self.bt_trees): 
             target_goal.behavior_tree = self.bt_trees[self.ACTIONS.ROW_TRAVERSAL]
+            self.get_logger().info("Edge Action Manager: Row traversal BT path {}".format(target_goal.behavior_tree))
+        else:
+            self.get_logger().info("Edge Action Manager: Row traversal BT path not found")
         target_pose = self.crete_pose_stamped_msg_from_position(target_pose_frame_id, next_goal)
         target_goal.poses.append(target_pose)
+        
         controller_plugin = self.ACTIONS.bt_tree_with_control_server_config[self.ACTIONS.ROW_TRAVERSAL]
+        
         control_server_config = self.ACTIONS.planner_with_goal_checker_config[controller_plugin] 
         self.get_logger().info(" Edge Action Manager: Control params {}".format(control_server_config))
         self.update_params_control_server.set_params(control_server_config)
+        
+        pd_reg_config = self.ACTIONS.planner_with_pd_regulator_config[controller_plugin] 
+        self.get_logger().info(" Edge Action Manager: PD params {}".format(pd_reg_config))
+        self.update_params_pd_regulator.set_params(pd_reg_config)
+        
         send_goal_future = self.client.send_goal_async(target_goal,  feedback_callback=self.feedback_callback)
         goal_accepted = self.send_goal_request(send_goal_future, self.ACTIONS.ROW_OPERATION)
         if(goal_accepted == False):
@@ -905,6 +919,11 @@ class EdgeActionManager(rclpy.node.Node):
             if target_action in self.control_server_configs:
                 control_server_config = self.control_server_configs[target_action]
                 self.update_params_control_server.set_params(control_server_config)
+                
+                pd_reg_config = self.control_server_configs[target_action + "pd_reg"]
+                self.get_logger().info(" Edge Action Manager: PD params {}".format(pd_reg_config))
+                self.update_params_pd_regulator.set_params(pd_reg_config)
+        
             if (target_action == self.ACTIONS.ROW_OPERATION):
                 row_operation_is_completed = self.execute_row_operation_action(action_msg)
                 if(row_operation_is_completed == False):
