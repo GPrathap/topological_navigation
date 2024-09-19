@@ -43,7 +43,7 @@ class TopologicalNavServer(rclpy.node.Node):
     _feedback_exec_policy = ExecutePolicyModeFeedback()
     _result_exec_policy = ExecutePolicyMode.Result()
 
-    def __init__(self, name, update_params_control_server, edge_action_manager_server , update_params_pd_regulator):
+    def __init__(self, name, update_params_control_server, edge_action_manager_server , update_params_pd_regulator, robot_controller_name):
         super().__init__(name)
         rclpy.get_default_context().on_shutdown(self._on_node_shutdown)
         self.node_by_node = False
@@ -58,6 +58,7 @@ class TopologicalNavServer(rclpy.node.Node):
         self.nav_from_closest_edge = False
         self.fluid_navigation = True
         self.final_goal = False
+        self.robot_controller_name = robot_controller_name
         self.update_params_control_server = update_params_control_server
         self.update_params_pd_regulator = update_params_pd_regulator
 
@@ -136,9 +137,9 @@ class TopologicalNavServer(rclpy.node.Node):
         self.ACTIONS.setPlannerParams(default_planner, default_planner_xy_goal_tolerance, default_planner_xy_yaw_goal_tolerance)
         self.ACTIONS.setPlannerParams(goal_align_planner, goal_align_planner_xy_goal_tolerance, goal_align_planner_xy_yaw_goal_tolerance)
         
-        self.ACTIONS.setPDRegulstorParams(row_traversal_planner, self.row_traversal_planner_pd_params)
-        self.ACTIONS.setPDRegulstorParams(default_planner, self.default_planner_pd_params)
-        self.ACTIONS.setPDRegulstorParams(goal_align_planner, self.goal_align_planner_pd_params)
+        self.ACTIONS.setPDRegulstorParams(row_traversal_planner, self.row_traversal_planner_pd_params, self.robot_controller_name)
+        self.ACTIONS.setPDRegulstorParams(default_planner, self.default_planner_pd_params, self.robot_controller_name)
+        self.ACTIONS.setPDRegulstorParams(goal_align_planner, self.goal_align_planner_pd_params, self.robot_controller_name)
 
         bt_tree_default = os.path.join(get_package_share_directory('topological_navigation'), 'config', 'bt_tree_default.xml')
         bt_tree_goal_align = os.path.join(get_package_share_directory('topological_navigation'), 'config', 'bt_tree_goal_align.xml')
@@ -1254,13 +1255,16 @@ def main():
     rclpy.init(args=None)
     update_params_control_server = ParameterUpdaterNode("controller_server")
     ROBOT_MODEL = os.environ['ROBOT_MODEL']
+    robot_controller_name = ""
     if(ROBOT_MODEL == "dogtooth"):
         update_params_pd_regulator = ParameterUpdaterNode("dogtooth_robot")
+        robot_controller_name = "dogtooth_robot"
     elif(ROBOT_MODEL == "hunter"):
-        update_params_pd_regulator = ParameterUpdaterNode("hunter_robot")
+        update_params_pd_regulator = ParameterUpdaterNode("hunter")
+        robot_controller_name = "hunter"
         
     edge_action_manager_server = EdgeActionManager("edge_action_manager")
-    node = TopologicalNavServer('topological_navigation', update_params_control_server, edge_action_manager_server, update_params_pd_regulator)
+    node = TopologicalNavServer('topological_navigation', update_params_control_server, edge_action_manager_server, update_params_pd_regulator, robot_controller_name)
     executor = MultiThreadedExecutor()
     executor.add_node(update_params_control_server)
     executor.add_node(edge_action_manager_server)

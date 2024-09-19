@@ -114,6 +114,33 @@ class ActionsType:
         self.bt_tree_with_control_server_config[self.NAVIGATE_TO_POSE] = "dwb_core::DWBLocalPlanner"
         self.bt_tree_with_control_server_config[self.GOAL_ALIGN] = "dwb_core::DWBLocalPlanner"
         self.bt_tree_with_control_server_config[self.ROW_RECOVERY] = "dwb_core::DWBLocalPlanner"
+        
+        self.planner_with_pd_regulator_config = {
+            "dwb_core::DWBLocalPlanner": {
+                "kp_v": 40.0,
+                "kd_v": 0.1,
+                "kp_w": 12.0,
+                "kd_w": 0.1,
+            },
+            "teb_local_planner::TebLocalPlannerROS": {
+                "kp_v": 40.0,
+                "kd_v": 0.1,
+                "kp_w": 12.0,
+                "kd_w": 0.1,
+            },
+            "rownav_local_planner::TebLocalPlannerROS":{
+                "kp_v": 40.0,
+                "kd_v": 0.1,
+                "kp_w": 12.0,
+                "kd_w": 0.1,
+            },
+            "behavioral_controller::BehavioralController":{
+                "kp_v": 40.0,
+                "kd_v": 0.1,
+                "kp_w": 12.0,
+                "kd_w": 0.1,
+            }
+        }
 
     def getCodeForRobotCurrentStatus(self, msg):
         if msg not in self.ROBOT_CURRENT_STATUS:
@@ -131,3 +158,12 @@ class ActionsType:
         self.planner_with_goal_checker_config[planner_name]["goal_checker.xy_goal_tolerance"] = xy_goal_tolerance
         self.planner_with_goal_checker_config[planner_name]["goal_checker.yaw_goal_tolerance"] = yaw_goal_tolerance
         print("Setting planner {} params xy_goal_tolerance: {}, yaw_goal_tolerance: {}".format(planner_name, xy_goal_tolerance, yaw_goal_tolerance))
+        
+    def setPDRegulstorParams(self, planner_name, pd_params, robot_controller_name):
+        if not planner_name in self.planner_with_goal_checker_config:
+            print("The planner {} is not one of configured types".format(planner_name))
+            return 
+        parmas_names = ["kp_v", "kd_v", "kp_w", "kd_w"]
+        for index, val in zip(parmas_names, pd_params):
+            self.planner_with_pd_regulator_config[planner_name][index] = val
+        print("Setting planner {} params kp_v: {} kd_v: {} kp_w: {} kd_w: {} ".format(planner_name, pd_params[0], pd_params[1], pd_params[2], pd_params[3]))

@@ -916,6 +916,7 @@ class EdgeActionManager(rclpy.node.Node):
         for action_msg in self.action_msgs:
             target_goal, target_action = action_msg.getNavGoal(), action_msg.getAction()
             self.get_logger().info("Edge Action Manager: Executing action : {} ".format(target_action))
+            self.get_logger().info("===========================================Edge Action Manager: Executing action : {} ".format(self.control_server_configs))
             if target_action in self.control_server_configs:
                 control_server_config = self.control_server_configs[target_action]
                 self.update_params_control_server.set_params(control_server_config)
